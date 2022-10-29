@@ -201,7 +201,7 @@ File: [Modes/MyGameInstance.h](/Source/TutorialMPBasics/Public/Modes/MyGameInsta
 UENUM(BlueprintType)
 enum class EGameMode : uint8
 {
-  // examples for game modes (i.e. rule sets) of your game
+        // examples for game modes (i.e. rule sets) of your game
 	EveryManForHimself UMETA(DisplayName="every man for himself"),
 	Teams UMETA(DisplayName="teams"),
 	Coop UMETA(DisplayName="coop"),
@@ -240,12 +240,12 @@ class MYGAME_API UMyGameInstance : public UGameInstance
 	GENERATED_BODY()
 
 public:
- UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+        UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	FHostSessionConfig SessionConfig = // default values
 		{ ""
 		, 4
 		, false
-		, false
+		, true
 		, EGameMode::EveryManForHimself
 		};
 };
@@ -288,3 +288,215 @@ You can read more about the idea behind subsystems Ben's [Unreal-syle Singletons
 
 By creating a new C++ class (from within the Unreal Editor) that inherits from `GameInstanceSubsystem`, you are good to go.
 I called mine `MyGISubsystem`, but `SessionManager` would be an equally valid name choice.
+
+You can always find the complete code in the corresponding source files.
+I.e. [Modes/MyGISubsystem.h](/Source/TutorialMPBasics/Public/Modes/MyGISubsystem.h) and [Modes/MyGISubsystem.cpp](/Source/TutorialMPBasics/Private/Modes/MyGISubsystem.cpp).
+In this document, I present the code in fractions.
+
+### Chosing the online subsytem: LAN, EOS, Steam, or whatnot.
+
+The online subsystem shouldn't be confused with the above Game Instance Subsystem. 
+I don't know why they are both called subsystem, they don't have anything in common.
+"Online Subystem" always refers to Steam or EOS (the Epic Online Services) and alike.
+You can set a default for the online subsystem by adding the following line to [Config/DefaultEngine.ini](/Config/DefaultEngine.ini)
+
+```
+[OnlineSubsystem]
+DefaultPlatformService=<Default Platform Identifier>
+```
+
+as documented in [the official docs on the online subsystem](https://docs.unrealengine.com/5.0/en-US/online-subsystem-in-unreal-engine/).
+The `<Default Platform Identifier>` can be `NULL`, `Steam`, `EOS`, `EOSPlus`, depending on your choice.
+I prefer not to set the default and rather make an explicit choice of the online subsytem.
+The reason for that is that I want to implement LAN (no authentication required!) along with some online service.
+If you let your player chose between single player and, say, Steam, it makes sense to set Steam as default.
+
+In our case, we define the following function inside the Game Instance Subsystem to get the right *online* subsystem:
+
+File [Modes/MyGISubsystem.cpp](/Source/TutorialMPBasics/Private/Modes/MyGISubsystem.cpp)
+
+```
+IOnlineSessionPtr UMyGISubsystem::GetSessionInterface() const
+{
+	return Online::GetSessionInterfaceChecked
+		( GetWorld()
+		, Cast<UMyGameInstance>(GetGameInstance())->SessionConfig.bEnableLAN
+			? FName(TEXT("NULL"))
+			: FName(TEXT("EOS"))
+		);
+}
+```
+
+This code checks the application state to see whether or not we have LAN enabled to chose between LAN (encoded as the "Online Subystem NULL") and the Epic Online Services/EOS.
+The idea is to implement a UI that has a checkbox to set the `bEnableLAN` value in the game instance.
+
+### Creating a session
+
+Just follow the comments inside the code to get what's going on.
+
+File [Modes/MyGISubsystem.cpp](/Source/TutorialMPBasics/Private/Modes/MyGISubsystem.cpp)
+
+```
+bool UMyGISubsystem::CreateSession(const FLocalPlayerContext& LPC, FHostSessionConfig SessionConfig,
+                                   TFunction<void(FName, bool)> Callback)
+{
+	// the aforementioned helper function to get the right online subsystem based on the application state
+	const IOnlineSessionPtr SI = GetSessionInterface();
+
+	// syntax for unpacking of structs
+	auto [ CustomName, NumConnections, bPrivate, bEnableLAN, _GameMode ] = SessionConfig;
+	
+	// using a smart pointer, implying proper clean up of the object created with `new`
+	const TUniquePtr<FOnlineSessionSettings> LastSessionSettings = MakeUnique<FOnlineSessionSettings>();
+	// similar, but allows several pointers to point to the created object:
+	//const TSharedPtr<FOnlineSessionSettings> LastSessionSettings = MakeShareable(new FOnlineSessionSettings());
+	// cf. https://docs.unrealengine.com/4.26/en-US/ProgrammingAndScripting/ProgrammingWithCPP/UnrealArchitecture/SmartPointerLibrary/
+	
+	// using the `bPrivate` variable to either set the number of **private** or **public** connections
+	// respectively
+	LastSessionSettings->NumPrivateConnections = bPrivate ? NumConnections : 0;
+	LastSessionSettings->NumPublicConnections = !bPrivate ? NumConnections : 0;
+	LastSessionSettings->bAllowInvites = true;
+	LastSessionSettings->bAllowJoinInProgress = true;
+	LastSessionSettings->bAllowJoinViaPresence = true;
+	LastSessionSettings->bAllowJoinViaPresenceFriendsOnly = true;
+	LastSessionSettings->bIsDedicated = false;
+	// `bUsesPresence` means that this session will affect the status displayed in the online service (Steam, EOS)
+	// At least this is how I understand it. Cf. https://forums.unrealengine.com/t/what-is-a-presence-session/327223/2
+	LastSessionSettings->bUsesPresence = true;
+	LastSessionSettings->bIsLANMatch = bEnableLAN;
+	LastSessionSettings->bShouldAdvertise = true;
+
+	LastSessionSettings->Set(SETTING_MAPNAME, FString(TEXT("some level")), EOnlineDataAdvertisementType::ViaOnlineService);
+
+	// The custom name for the session, provided by the user.
+	// This requires `#define SETTING_CUSTOMNAME FName(TEXT("CUSTOMNAME"))` in `MyGISubsystem.h`, right after the includes.
+	LastSessionSettings->Set(SETTING_CUSTOMNAME, CustomName, EOnlineDataAdvertisementType::ViaOnlineService);
+
+	// As we are dealing with a multicast delegate, we can add as many delegates (= handlers) as we want.
+	// By clearing, we make sure to react only once to this event
+	if(SI->OnCreateSessionCompleteDelegates.IsBound())
+	{
+		// We expect this delegate to be unbound the first time the user creates a session.
+		// If it isn't, we get a warning.
+		UE_LOG(LogNet, Warning, TEXT("%s: OnCreateSessionCompleteDelegates: was bound, clearing"), *GetFullName())
+		SI->OnCreateSessionCompleteDelegates.Clear();
+	}
+
+	/*
+	 * this uses `AddLambda` in combination with a closure that is passed as the function parameter `Callback`,
+	 * see above; if you don't like closures, you can equally well use
+
+	SI->OnCreateSessionCompleteDelegates.AddUObject(GetGameInstance(), &UMyGameInstance::HandleCreateSessionComplete);
+
+	 * ... where `HandleCreateSessionComplete` is your custom function that implements the same functionality as is
+	 * passed inside `Callback`.
+	 * In order to see what `Callback` actually does, e.g. what code gets executed, see the call to `CreateSession` in
+	 * "UMyGameInstance.cpp", lines 15-39
+	 * 
+	 */
+	SI->OnCreateSessionCompleteDelegates.AddLambda(Callback);
+
+	/*
+	 * Maybe you have seen code like this in some tutorial:
+
+	return SI->CreateSession(*LPC.GetLocalPlayer()->GetPreferredUniqueNetId(), NAME_GameSession, *LastSessionSettings);
+
+	 * However, this signature passes along a unique net id, which might be `null` at this point.
+	 * By passing the local player index, a unique net id will be created for us without problem.
+	 * Note that often, instead of `GetLocalPlayer()->GetIndexInGameInstance()` just `0` is provided.
+	 * The 0 means that the session is always created in the name of the local player with index 0.
+	 * This is always safe, as split/shared screen isn't usually possible at the same time as LAN/online multiplayer.
+	 * As long as there is only one local player (not split/shared screen), its index is 0.
+	 */
+	return SI->CreateSession(LPC.GetLocalPlayer()->GetIndexInGameInstance(), NAME_GameSession, *LastSessionSettings);
+}
+```
+
+Given that `UMyGISubsystem::CreateSession` has the `TFunction` object "Callback" as parameter,
+and given that `Callback` gets registered as delegate handler via `OnCreateSessionCompleteDelegates.AddLambda(Callback)`,
+we get to decide what happens at the event "OnCreateSessionComplete" right where we call `UMyGISubsystem::CreateSession`.
+
+For that, we define `UMyGameInstance::HostGame`, like this:
+
+File: [Modes/UMyGameInstance.cpp](Source/TutorialMPBasics/Private/Modes/MyGameInstance.cpp)
+
+```
+void UMyGameInstance::HostGame(const FLocalPlayerContext& LPC)
+{
+	UMyGISubsystem* GISub = GetSubsystem<UMyGISubsystem>();
+
+	GISub->CreateSession
+		( LPC
+		, SessionConfig
+		// Using a closure here has several advantages:
+		// * we can see the code that gets executed asynchronously (the callback) right here, which helps with reading
+		//   the program
+		// * we don't have to concern ourselves with delegates at all, leaving all that to the
+		//   session related code in the Game Instance subsystem
+		// * we can pass the local player context `LPC` into the closure, thus we know which local player created the
+		//   session and thus has to update their current level; keeping track of this would otherwise require an extra
+		//   variable in the game instance
+		, [this, LPC] (FName SessionName, bool bSuccess)
+		{
+			if(bSuccess)
+			{
+				Cast<UMyLocalPlayer>(LPC.GetLocalPlayer())->CurrentLevel = ECurrentLevel::SomeLevel;
+				GetWorld()->ServerTravel("/Game/SomeLevel?listen");
+			}
+			else
+			{
+				// This log output is the bare minimum; properly working with error state implies some sort messaging
+				// system in our user interface
+				UE_LOG(LogNet, Error, TEXT("%s: create session call returned with failure"), *GetFullName())
+			}
+		});
+	
+}
+```
+
+This method in the Game Instance doesn't have a lot to do.
+The idea is that some button in the user interface of the same name ("Host Game") is bound to the `HostGame` method of the Game Instance.
+
+The guiding principle is:
+The user interface (UI) is implemented as a HUD (inheriting from `AHUD`) in a level called "MainMenu".
+All buttons of the UI (or call it the Main Menu, or the HUD) either
+
+* bind to functions from within the UI, e.g. when you navigate through menus,
+* or they set some application state, e.g. a checkbox to enable LAN
+* or they call a method of the Game Instance, like `HostGame`
+
+Thus, effectively the UI is only concerned with itself and the Game Instance.
+Also, the UI is owned by a local player (and thus by a player controller).
+I guess this kind of makes sense, as the navigation through the menu usually is the responsibility of one player, even in a shared screen scenario.
+If you want local players to configure stuff individually, e.g. the haircut of their respective characters, you are in a split-screen scenario with two distinct UIs.
+As the owning player of the UI comes as a package consisting of
+
+* a `ULocalPlayer` object
+* a `APlayerController` object
+* a `APlayerState` object
+
+there is the `FLocalPlayerContext`, cf. [official documentation](https://docs.unrealengine.com/4.27/en-US/API/Runtime/Engine/Engine/FLocalPlayerContext/).
+The methods of the Game Instance that get called from the UI all take a `const FLocalPlayerContext& LPC` as an argument.
+This way the Game Instance is always aware of the actual local player (and its controller) when applying changes to the application state.
+
+### The local player context is somewhat incompatible to Unreal Engine
+
+The developers of Unreal Engine leave us with a somewhat stupid choice, regarding the use of the local player context.
+I would like to define `HostGame` like this:
+
+```
+// this doesn't compile
+UFUNCTION(BlueprintCallable)
+void HostGame(const FLocalPlayerContext& LPC);
+```
+
+This way, I would have the choice to implement UI related stuff completely in Blueprint.
+The Game Instance is the perfect interace from Blueprint to C++.
+Furthermore you can trust me that `const FLocalPlayerContext&` type is the preferred way of passing structs as function parameters in C++.
+However, the definition of `FLocalPlayerContext` lacks the `USTRUCT` macro (unlike our custom `FSessionConfig`), which makes it incompatible with the `UFUNCTION` macro.
+I really like the idea behind the `FLocalPlayerContext` for the convenience (and clarity) it provides.
+It seems that its use isn't really encouraged though.
+If you want to be more Blueprint-compatible, you can replace the `FLocalPlayerContext` param with the index of the local player in the array of the Game Instance, `int32`.
+Via `AGameInstance::GetLocalPlayerByIndex(const int32) you can get access to the local player, and from there to the Player Controller, **and from there** to the Player State, in case you need it.
+From within the UI, you will need `ULocalPlayer::GetIndexInGameInstace() -> int32` to get the local player index.
