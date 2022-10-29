@@ -40,6 +40,14 @@ TODO: Steam (should be relatively straightforward)
 And this [Local Player Context](https://docs.unrealengine.com/4.27/en-US/API/Runtime/Engine/Engine/FLocalPlayerContext/) looks useful.
 Let's actually go ahead and use it.
 
+## Getting started with LAN-only
+
+We skip anything related to Steam and EOS until Part 3 below.
+This implies LAN-based multiplayer, without login and without connetion to any online service for Part 1 and Part 2.
+If you know that your game won't support LAN, don't worry.
+There is virtually no extrawork in first implementing LAN and then replacing it with some online service.
+I would even encourage to use LAN as the most straightforward way to test new multiplayer functionality.
+
 # Part 1: Using Game Instance to manage application state
 
 The Game Instance is an object of type `UGameInstance`, or of a type that inherit from `UGameInstance`.
@@ -270,7 +278,7 @@ These source are of course voluntary efforts of the community, so there is no re
 But a comprehensive documentation that explains what's going on and offers ways of understanding is still missing.
 Let's start and fill the gap.
 
-## A session has lifecycle, from being created to being destroyed, and other players can join
+## A session has a lifecycle, from being created to being destroyed, and other players can join
 
 When talking about sessions, we are leaving split/shared screen behind.
 Usually, in the session tutorials, it is assumed that there is only one local player (index 0).
@@ -330,6 +338,9 @@ IOnlineSessionPtr UMyGISubsystem::GetSessionInterface() const
 This code checks the application state to see whether or not we have LAN enabled to chose between LAN (encoded as the "Online Subystem NULL") and the Epic Online Services/EOS.
 The idea is to implement a UI that has a checkbox to set the `bEnableLAN` value in the game instance.
 
+The configuration of EOS and Steam follows further down below, in Part 3.
+Until then, only LAN actually works.
+
 ### Creating a session
 
 Just follow the comments inside the code to get what's going on.
@@ -340,14 +351,13 @@ File [Modes/MyGISubsystem.cpp](/Source/TutorialMPBasics/Private/Modes/MyGISubsys
 bool UMyGISubsystem::CreateSession(const FLocalPlayerContext& LPC, FHostSessionConfig SessionConfig,
                                    TFunction<void(FName, bool)> Callback)
 {
-	// the aforementioned helper function to get the right online subsystem based on the application state
 	const IOnlineSessionPtr SI = GetSessionInterface();
 
 	// syntax for unpacking of structs
 	auto [ CustomName, NumConnections, bPrivate, bEnableLAN, _GameMode ] = SessionConfig;
-	
+
 	// using a smart pointer, implying proper clean up of the object created with `new`
-	const TUniquePtr<FOnlineSessionSettings> LastSessionSettings = MakeUnique<FOnlineSessionSettings>();
+	const TSharedRef<FOnlineSessionSettings> LastSessionSettings = MakeShared<FOnlineSessionSettings>();
 	// similar, but allows several pointers to point to the created object:
 	//const TSharedPtr<FOnlineSessionSettings> LastSessionSettings = MakeShareable(new FOnlineSessionSettings());
 	// cf. https://docs.unrealengine.com/4.26/en-US/ProgrammingAndScripting/ProgrammingWithCPP/UnrealArchitecture/SmartPointerLibrary/
@@ -369,9 +379,13 @@ bool UMyGISubsystem::CreateSession(const FLocalPlayerContext& LPC, FHostSessionC
 
 	LastSessionSettings->Set(SETTING_MAPNAME, FString(TEXT("some level")), EOnlineDataAdvertisementType::ViaOnlineService);
 
-	// The custom name for the session, provided by the user.
-	// This requires `#define SETTING_CUSTOMNAME FName(TEXT("CUSTOMNAME"))` in `MyGISubsystem.h`, right after the includes.
+	// the custom name for the session, provided by the user
 	LastSessionSettings->Set(SETTING_CUSTOMNAME, CustomName, EOnlineDataAdvertisementType::ViaOnlineService);
+	// FOnlineSessionSettings::Set allows to set [value] at [key], where value must be one of
+	// TSharedRef, uint64, int64, TArray<uint8>, float, double, bool, uint32, int32, TCHAR*, FString
+	// Our enum isn't one of those, luckily in can be cast to `int32` trivially;
+	// its internal representation is `uint8`, which converts to `int32` w/o problem
+	LastSessionSettings->Set(SETTING_LEVEL, (int32)ECurrentLevel::SomeLevel);
 
 	// As we are dealing with a multicast delegate, we can add as many delegates (= handlers) as we want.
 	// By clearing, we make sure to react only once to this event
@@ -408,9 +422,19 @@ bool UMyGISubsystem::CreateSession(const FLocalPlayerContext& LPC, FHostSessionC
 	 * The 0 means that the session is always created in the name of the local player with index 0.
 	 * This is always safe, as split/shared screen isn't usually possible at the same time as LAN/online multiplayer.
 	 * As long as there is only one local player (not split/shared screen), its index is 0.
+	 *
+	 * Also, the parameter `FName SessionName`, set to `NAME_GameSession`, can be any `FName`,
+	 * e.g. `FName(TEXT("my custom session")`. However, don't mistake the `SessionName` parameter for some sort of
+	 * session description. Unreals FNames are	case-insensitive identifiers that aren't meant to hold
+	 * user content (or any dynamic content for that matter).
+	 * `NAME_GameSession` is sort of a default value for the kind of session we are creating (i.e. opposed to
+	 * `NAME_PartySession` which is meant to be used for lobby sessions before starting the game).
+	 * In the end, you can put any FName there. Just make sure to be consistent in always putting the same.
+	 * 
 	 */
 	return SI->CreateSession(LPC.GetLocalPlayer()->GetIndexInGameInstance(), NAME_GameSession, *LastSessionSettings);
 }
+
 ```
 
 Given that `UMyGISubsystem::CreateSession` has the `TFunction` object "Callback" as parameter,
@@ -492,11 +516,140 @@ void HostGame(const FLocalPlayerContext& LPC);
 ```
 
 This way, I would have the choice to implement UI related stuff completely in Blueprint.
-The Game Instance is the perfect interace from Blueprint to C++.
-Furthermore you can trust me that `const FLocalPlayerContext&` type is the preferred way of passing structs as function parameters in C++.
+The Game Instance is the perfect interface from Blueprint to C++.
+Furthermore you can trust me that `const FLocalPlayerContext&` is the preferred way of passing structs as function parameters in C++.
 However, the definition of `FLocalPlayerContext` lacks the `USTRUCT` macro (unlike our custom `FSessionConfig`), which makes it incompatible with the `UFUNCTION` macro.
 I really like the idea behind the `FLocalPlayerContext` for the convenience (and clarity) it provides.
 It seems that its use isn't really encouraged though.
 If you want to be more Blueprint-compatible, you can replace the `FLocalPlayerContext` param with the index of the local player in the array of the Game Instance, `int32`.
 Via `AGameInstance::GetLocalPlayerByIndex(const int32) you can get access to the local player, and from there to the Player Controller, **and from there** to the Player State, in case you need it.
 From within the UI, you will need `ULocalPlayer::GetIndexInGameInstace() -> int32` to get the local player index.
+
+### Joining a session
+
+File: [Modes/UMyGameInstance.cpp](Source/TutorialMPBasics/Private/Modes/MyGameInstance.cpp)
+
+```
+bool UMyGISubsystem::JoinSession(const FLocalPlayerContext& LPC, TFunction<void(ECurrentLevel, EOnJoinSessionCompleteResult::Type)> Callback)
+{
+	const IOnlineSessionPtr SI = GetSessionInterface();
+	const TSharedRef<FOnlineSessionSearch> LastSessionSearch = MakeShared<FOnlineSessionSearch>();
+	LastSessionSearch->MaxSearchResults = 10000;
+	LastSessionSearch->bIsLanQuery = Cast<UMyGameInstance>(GetGameInstance())->SessionConfig.bEnableLAN;
+	LastSessionSearch->QuerySettings.Set(SEARCH_PRESENCE, true, EOnlineComparisonOp::Equals);
+
+	if(SI->OnFindSessionsCompleteDelegates.IsBound())
+	{
+		UE_LOG(LogNet, Warning, TEXT("%s: OnFindSessionsCompleteDelegates: was bound, clearing"), *GetFullName())
+		SI->OnFindSessionsCompleteDelegates.Clear();
+	}
+	SI->OnFindSessionsCompleteDelegates.AddLambda([this, LastSessionSearch, LPC, Callback, SI] (bool bSuccess)
+	{
+		// In case we find a session, we just join immediately;
+		// more thoroughly, you make a list of available sessions with their respective custom name and offer the player
+		// to join a specific one
+		const TArray<FOnlineSessionSearchResult> Results = LastSessionSearch->SearchResults;
+		if(bSuccess && !Results.IsEmpty())
+		{
+			if(SI->OnJoinSessionCompleteDelegates.IsBound())
+			{
+				UE_LOG(LogNet, Warning, TEXT("%s: OnJoinSessionCompleteDelegates: was bound, clearing"), *GetFullName())
+				SI->OnJoinSessionCompleteDelegates.Clear();
+			}
+			// We are inside a closure that gets executed when "FindSessionsComplete" fires, thus this line means:
+			// When we found a session ...
+			// ... we lookup the new level in the session settings ...
+			// ... and when we joined a session ...
+			// ... execute `Callback(NewLevel, EJoinSessionCompleteResult::Type)`
+			int32 NewLevelI;
+			// the session settings can't store our enum `CurrentLevel`, we stored an `int32` instead
+			Results[0].Session.SessionSettings.Get(SETTING_LEVEL, NewLevelI);
+			SI->OnJoinSessionCompleteDelegates.AddLambda([Callback, NewLevelI] (FName, EOnJoinSessionCompleteResult::Type Type)
+			{
+				// to convert `int32` to the enum, `static_cast` is just fine
+				Callback(static_cast<ECurrentLevel>(NewLevelI), Type);
+			});
+			SI->JoinSession(LPC.GetLocalPlayer()->GetIndexInGameInstance(), NAME_GameSession, Results[0]);
+		}
+		else
+		{
+			UE_LOG(LogNet, Error, TEXT("%s: couldn't find session."), *GetFullName())
+		}
+	});
+
+	// after having registered the callback (`AddLambda`) for the FindSessionCompleteEvent, we go and find sessions
+	return SI->FindSessions
+		(LPC.GetLocalPlayer()->GetIndexInGameInstance()
+		, LastSessionSearch
+		);
+}
+```
+
+Like above, with `HostGame`, there is the corresponding `JoinGame` method in the Game Instance:
+
+```
+void UMyGameInstance::JoinGame(const FLocalPlayerContext& LPC)
+{
+	Cast<UMyLocalPlayer>(LPC.GetLocalPlayer())->IsMultiplayer = true;
+	GetSubsystem<UMyGISubsystem>()->JoinSession(LPC, [this, LPC] (ECurrentLevel NewLevel, EOnJoinSessionCompleteResult::Type Result)
+	{
+		switch(Result)
+		{
+		using namespace EOnJoinSessionCompleteResult;
+		case SessionIsFull:
+			UE_LOG(LogNet, Error, TEXT("%s: Join session: session is full"), *GetFullName())
+			break;
+		case SessionDoesNotExist:
+			UE_LOG(LogNet, Error, TEXT("%s: Join session: session does not exist"), *GetFullName())
+			break;
+		case CouldNotRetrieveAddress:
+			UE_LOG(LogNet, Error, TEXT("%s: Join session: could not retrieve address"), *GetFullName())
+			break;
+		case AlreadyInSession:
+			UE_LOG(LogNet, Error, TEXT("%s: Join session: alreayd in session"), *GetFullName())
+			break;
+		case UnknownError:
+			UE_LOG(LogNet, Error, TEXT("%s: Join session: unknown error"), *GetFullName())
+			break;
+		case Success:
+			if(ClientTravelToSession(LPC.GetLocalPlayer()->GetControllerId(), NAME_GameSession))
+			{
+				
+				Cast<UMyLocalPlayer>(LPC.GetLocalPlayer())->CurrentLevel = NewLevel;
+			}
+			else
+			{
+				UE_LOG(LogNet, Error, TEXT("%s: travel to session failed"), *GetFullName())
+			}
+			break;
+		default: ;
+		}
+	});
+}
+```
+
+The logging is a cheap replacement for an actual error message to the user, using the UI.
+Note that you get this log output by either running the game in the editor (PIE), OR by calling something like this, e.g. from within a .bat file:
+
+```
+"F:\ue\UE_5.0\Engine\Binaries\Win64\UnrealEditor.exe" "F:\ue\projects\TutorialMPBasics\TutorialMPBasics.uproject" -log
+```
+
+Cf. the file [launch.bat](/launch.bat) in this project.
+
+### Destroying sessions
+
+There is a function `IOnlineSession::DestroySession` that you can work with just like with `IOnlineSession::CreateSession` and `IOnlineSession::FindSession`:
+It requires a `SessionName` (remember: it's usually just `NAME_GameSession`) and fires an event upon completion.
+You can call `DestroySession` to exit from a running game into the main menu.
+In case you exit to desktop, just run `UKismetSystemLibrary::QuitGame`.
+
+Note, however, that Unreal already ships a function `AGameInstance::ReturnToMainMenu()`.
+You actually might get away never calling `DestroySession`.
+
+Similarly there exists `IOnlineSession::StartSession`.
+Once I know what it's good for (including potential other functions), I will update here.
+
+# Part 3: Using EOS and Steam, instead of LAN
+
+## Log-in into EOS or Steam
