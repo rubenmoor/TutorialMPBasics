@@ -522,7 +522,7 @@ However, the definition of `FLocalPlayerContext` lacks the `USTRUCT` macro (unli
 I really like the idea behind the `FLocalPlayerContext` for the convenience (and clarity) it provides.
 It seems that its use isn't really encouraged though.
 If you want to be more Blueprint-compatible, you can replace the `FLocalPlayerContext` param with the index of the local player in the array of the Game Instance, `int32`.
-Via `AGameInstance::GetLocalPlayerByIndex(const int32) you can get access to the local player, and from there to the Player Controller, **and from there** to the Player State, in case you need it.
+Via `AGameInstance::GetLocalPlayerByIndex(const int32)` you can get access to the local player, and from there to the Player Controller, **and from there** to the Player State, in case you need it.
 From within the UI, you will need `ULocalPlayer::GetIndexInGameInstace() -> int32` to get the local player index.
 
 ### Joining a session
