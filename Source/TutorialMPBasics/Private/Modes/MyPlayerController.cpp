@@ -8,17 +8,45 @@
 void AMyPlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
-	
-	InputComponent->BindAction("ActionLeft", IE_Pressed, this, &AMyPlayerController::HandleActionLeft);
-	InputComponent->BindAction("ActionRight", IE_Pressed, this, &AMyPlayerController::HandleActionRight);
+
+	BindAction("ActionLeft", IE_Pressed, EAction::Left);
+	BindAction("ActionRight", IE_Pressed, EAction::Right);
 }
 
-void AMyPlayerController::HandleActionLeft()
+void AMyPlayerController::HandleAction(EAction Action) const
 {
-	GetPawn<AMyPawn>()->AccelerateLeft();
+	switch(Action)
+	{
+	case EAction::Left:
+		GetPawn<AMyPawn>()->AccelerateLeft();
+		break;
+	case EAction::Right:
+		GetPawn<AMyPawn>()->AccelerateRight();
+		break;
+	}
 }
 
-void AMyPlayerController::HandleActionRight()
+void AMyPlayerController::BindAction(const FName ActionName, EInputEvent KeyEvent, EAction Action)
 {
-	GetPawn<AMyPawn>()->AccelerateRight();
+	FInputActionBinding Binding(ActionName, KeyEvent);
+	if(GetLocalRole() == ROLE_Authority)
+	{
+		Binding.ActionDelegate.GetDelegateForManualSet().BindLambda([this, Action] ()
+		{
+			HandleAction(Action);
+		});
+	}
+	else
+	{
+		Binding.ActionDelegate.GetDelegateForManualSet().BindLambda([this, Action] ()
+		{
+			ServerRPC_HandleAction(Action);
+		});
+	}
+	InputComponent->AddActionBinding(Binding);
+}
+
+void AMyPlayerController::ServerRPC_HandleAction_Implementation(EAction Action)
+{
+	HandleAction(Action);
 }

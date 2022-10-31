@@ -12,10 +12,16 @@ void AMyHUD::BeginPlay()
 {
 	Super::BeginPlay();
 
+	if(!IsValid(UW_HUD_Class))
+	{
+		UE_LOG(LogTemp, Error, TEXT("%s: UW_HUD_Class null"), *GetFullName())
+		return;
+	}
 	UW_HUD = CreateWidget<UUW_HUD>(GetGameInstance(), UW_HUD_Class, FName(TEXT("HUD")));
 	UW_HUD->AddToViewport();
-	
-	UW_HUD->SetTextHostClient(LOCTEXT("host-client", "helo"));
+
+	const FText HostClient = GetLocalRole() == ROLE_Authority ? LOCTEXT("host", "host") : LOCTEXT("client", "client");
+	UW_HUD->SetTextHostClient(HostClient);
 }
 
 #undef LOCTEXT_NAMESPACE

@@ -13,6 +13,4 @@ UCLASS()
 class TUTORIALMPBASICS_API AMyGameModeBase : public AGameModeBase
 {
 	GENERATED_BODY()
-
-	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
 };

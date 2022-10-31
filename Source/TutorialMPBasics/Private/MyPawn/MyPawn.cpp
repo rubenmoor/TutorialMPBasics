@@ -3,6 +3,8 @@
 
 #include "MyPawn/MyPawn.h"
 
+#include "Net/UnrealNetwork.h"
+
 // Sets default values
 AMyPawn::AMyPawn()
 {
@@ -11,12 +13,8 @@ AMyPawn::AMyPawn()
 
 	Body = CreateDefaultSubobject<UStaticMeshComponent>(FName(TEXT("Body")));
 	SetRootComponent(Body);
-}
 
-// Called when the game starts or when spawned
-void AMyPawn::BeginPlay()
-{
-	Super::BeginPlay();
+    AActor::SetReplicateMovement(false);
 }
 
 void AMyPawn::AccelerateLeft()
@@ -35,7 +33,10 @@ void AMyPawn::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	SetActorLocation(GetActorLocation() + Velocity * DeltaTime);
-	const float Dampening = 10.;
-	Velocity = Velocity.Length() < Dampening * DeltaTime ? FVector::Zero() : Velocity + Velocity.GetUnsafeNormal() * -Dampening * DeltaTime;
 }
 
+void AMyPawn::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(AMyPawn, Velocity);
+}

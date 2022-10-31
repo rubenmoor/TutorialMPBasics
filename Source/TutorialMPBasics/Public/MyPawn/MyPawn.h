@@ -22,20 +22,13 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite)
 	TObjectPtr<UStaticMeshComponent> Body;
 	
-	// Called when the game starts or when spawned
-	virtual void BeginPlay() override;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+public:	
+	UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadOnly)
 	FVector Velocity = FVector::Zero();
 
-public:	
 	void AccelerateLeft();
 	void AccelerateRight();
 
-	// Called every frame
+	// event handlers
 	virtual void Tick(float DeltaTime) override;
-
-	// Called to bind functionality to input
-	//virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
-
 };

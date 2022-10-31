@@ -6,6 +6,13 @@
 #include "GameFramework/PlayerController.h"
 #include "MyPlayerController.generated.h"
 
+UENUM(BlueprintType)
+enum class EAction : uint8
+{
+	Left,
+	Right
+};
+
 /**
  * 
  */
@@ -17,6 +24,12 @@ class TUTORIALMPBASICS_API AMyPlayerController : public APlayerController
 	virtual void SetupInputComponent() override;
 
 protected:
-	void HandleActionLeft();
-	void HandleActionRight();
+	void HandleAction(EAction Action) const;
+
+private:
+	// bind an action from the EAction enum and do the appropriate RPC
+	void BindAction(const FName ActionName, EInputEvent KeyEvent, EAction Action);
+
+	UFUNCTION(Server, Reliable)
+	void ServerRPC_HandleAction(EAction Action);
 };
