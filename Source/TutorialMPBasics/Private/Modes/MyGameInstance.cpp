@@ -3,23 +3,25 @@
 
 #include "Modes/MyGameInstance.h"
 
-#include "MainMenu/HUD_MainMenu.h"
 #include "Modes/MyGISubsystem.h"
 #include "Modes/MyLocalPlayer.h"
 
 void UMyGameInstance::HostGame(const FLocalPlayerContext& LPC)
 {
 	UMyGISubsystem* GISub = GetSubsystem<UMyGISubsystem>();
-	AHUD_MainMenu* HUDMenu = LPC.GetHUD<AHUD_MainMenu>();
-	
+
 	GISub->CreateSession
 		( LPC
 		, SessionConfig
 		// Using a closure here has several advantages:
-		// we can see the code that gets executed asynchronously (the callback) right here, which helps with reading
-		// the program, and we don't have to concern ourselves with delegates at all, leaving all that to the
-		// session related code in the Game Instance subsystem
-		, [this, LPC, HUDMenu] (FName SessionName, bool bSuccess)
+		// * we can see the code that gets executed asynchronously (the callback) right here, which helps with reading
+		//   the program
+		// * we don't have to concern ourselves with delegates at all, leaving all that to the
+		//   session related code in the Game Instance subsystem
+		// * we can pass the local player context `LPC` into the closure, thus we know which local player created the
+		//   session and thus has to update their current level; keeping track of this would otherwise require an extra
+		//   variable in the game instance
+		, [this, LPC] (FName SessionName, bool bSuccess)
 		{
 			if(bSuccess)
 			{
@@ -39,10 +41,8 @@ void UMyGameInstance::HostGame(const FLocalPlayerContext& LPC)
 void UMyGameInstance::JoinGame(const FLocalPlayerContext& LPC)
 {
 	Cast<UMyLocalPlayer>(LPC.GetLocalPlayer())->IsMultiplayer = true;
-	GetSubsystem<UMyGISubsystem>()->JoinSession(LPC, [this, LPC] (FName SessionName, EOnJoinSessionCompleteResult::Type Result)
+	GetSubsystem<UMyGISubsystem>()->JoinSession(LPC, [this, LPC] (ECurrentLevel NewLevel, EOnJoinSessionCompleteResult::Type Result)
 	{
-		UE_LOG(LogNet, Warning, TEXT("%s: trying to join session with name: %s"), *GetFullName(), *SessionName.ToString())
-		
 		switch(Result)
 		{
 		using namespace EOnJoinSessionCompleteResult;
@@ -62,7 +62,12 @@ void UMyGameInstance::JoinGame(const FLocalPlayerContext& LPC)
 			UE_LOG(LogNet, Error, TEXT("%s: Join session: unknown error"), *GetFullName())
 			break;
 		case Success:
-			if(!ClientTravelToSession(LPC.GetLocalPlayer()->GetControllerId(), NAME_GameSession))
+			if(ClientTravelToSession(LPC.GetLocalPlayer()->GetControllerId(), NAME_GameSession))
+			{
+				
+				Cast<UMyLocalPlayer>(LPC.GetLocalPlayer())->CurrentLevel = NewLevel;
+			}
+			else
 			{
 				UE_LOG(LogNet, Error, TEXT("%s: travel to session failed"), *GetFullName())
 			}

@@ -12,9 +12,9 @@
 UENUM(BlueprintType)
 enum class ECurrentLevel : uint8
 {
-	MainMenu UMETA(DisplayName="maine menu"),
-	SomeLevel UMETA(DisplayName="some level"),
-	SomeOtherLevel UMETA(DisplayName="some other level")
+	MainMenu       = 0 UMETA(DisplayName="main menu"),
+	SomeLevel      = 1 UMETA(DisplayName="some level"),
+	SomeOtherLevel = 2 UMETA(DisplayName="some other level")
 };
 
 /**

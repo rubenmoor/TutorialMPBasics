@@ -60,7 +60,8 @@ public:
 	// because `Super::JoinSession` doesn't do anything; it does, however, enforce a type signature that doesn't work
 	// well for this example
 	void JoinGame(const FLocalPlayerContext& LPC);
-	
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	FHostSessionConfig SessionConfig =
 		{ ""
 		, 4
@@ -71,6 +72,7 @@ public:
 	
 protected:
 	// event handlers
+	void HandleSessionCreated(FName SessionName, bool bSuccess);
 
 	// Using Local Player for player-specific application state requires some initialization we will do here
 	virtual int32 AddLocalPlayer(ULocalPlayer* NewPlayer, int32 ControllerId) override;

@@ -3,12 +3,14 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "OnlineSessionSettings.h"
 #include "Interfaces/OnlineSessionInterface.h"
 #include "Subsystems/GameInstanceSubsystem.h"
+#include "Modes/MyLocalPlayer.h"
+
 #include "MyGISubsystem.generated.h"
 
 #define SETTING_CUSTOMNAME FName(TEXT("CUSTOMNAME"))
+#define SETTING_LEVEL FName(TEXT("LEVEL"))
 
 /**
  * 
@@ -20,12 +22,10 @@ class TUTORIALMPBASICS_API UMyGISubsystem : public UGameInstanceSubsystem
 
 public:
 	bool CreateSession(const FLocalPlayerContext& LPC, struct FHostSessionConfig SessionConfig, TFunction<void(FName, bool)> Callback);
-	bool JoinSession(const FLocalPlayerContext& LPC, TFunction<void(FName, EOnJoinSessionCompleteResult::Type)> Callback);
+	bool JoinSession(const FLocalPlayerContext& LPC, TFunction<void(ECurrentLevel, EOnJoinSessionCompleteResult::Type)> Callback);
 	
 	// show the login browser window for EOS
 	void ShowLoginScreen(const FLocalPlayerContext& LPC);
-	
-	TArray<FOnlineSessionSearchResult> GetSearchResult() const { return LastSessionSearch->SearchResults; }
 	
 protected:
 	// event handlers
@@ -33,7 +33,4 @@ protected:
 
 private:
 	IOnlineSessionPtr GetSessionInterface() const;
-	
-	TSharedPtr<FOnlineSessionSettings> LastSessionSettings;
-	TSharedPtr<FOnlineSessionSearch> LastSessionSearch;
 };

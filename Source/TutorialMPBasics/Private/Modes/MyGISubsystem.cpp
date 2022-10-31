@@ -15,8 +15,15 @@ bool UMyGISubsystem::CreateSession(const FLocalPlayerContext& LPC, FHostSessionC
 
 	// syntax for unpacking of structs
 	auto [ CustomName, NumConnections, bPrivate, bEnableLAN, _GameMode ] = SessionConfig;
+
+	// using a smart pointer, implying proper clean up of the object created with `new`
+	const TSharedRef<FOnlineSessionSettings> LastSessionSettings = MakeShared<FOnlineSessionSettings>();
+	// similar, but allows several pointers to point to the created object:
+	//const TSharedPtr<FOnlineSessionSettings> LastSessionSettings = MakeShareable(new FOnlineSessionSettings());
+	// cf. https://docs.unrealengine.com/4.26/en-US/ProgrammingAndScripting/ProgrammingWithCPP/UnrealArchitecture/SmartPointerLibrary/
 	
-	LastSessionSettings = MakeShareable(new FOnlineSessionSettings());
+	// using the `bPrivate` variable to either set the number of **private** or **public** connections
+	// respectively
 	LastSessionSettings->NumPrivateConnections = bPrivate ? NumConnections : 0;
 	LastSessionSettings->NumPublicConnections = !bPrivate ? NumConnections : 0;
 	LastSessionSettings->bAllowInvites = true;
@@ -24,6 +31,8 @@ bool UMyGISubsystem::CreateSession(const FLocalPlayerContext& LPC, FHostSessionC
 	LastSessionSettings->bAllowJoinViaPresence = true;
 	LastSessionSettings->bAllowJoinViaPresenceFriendsOnly = true;
 	LastSessionSettings->bIsDedicated = false;
+	// `bUsesPresence` means that this session will affect the status displayed in the online service (Steam, EOS)
+	// At least this is how I understand it. Cf. https://forums.unrealengine.com/t/what-is-a-presence-session/327223/2
 	LastSessionSettings->bUsesPresence = true;
 	LastSessionSettings->bIsLANMatch = bEnableLAN;
 	LastSessionSettings->bShouldAdvertise = true;
@@ -32,8 +41,13 @@ bool UMyGISubsystem::CreateSession(const FLocalPlayerContext& LPC, FHostSessionC
 
 	// the custom name for the session, provided by the user
 	LastSessionSettings->Set(SETTING_CUSTOMNAME, CustomName, EOnlineDataAdvertisementType::ViaOnlineService);
+	// FOnlineSessionSettings::Set allows to set [value] at [key], where value must be one of
+	// TSharedRef, uint64, int64, TArray<uint8>, float, double, bool, uint32, int32, TCHAR*, FString
+	// Our enum isn't one of those, luckily in can be cast to `int32` trivially;
+	// its internal representation is `uint8`, which converts to `int32` w/o problem
+	LastSessionSettings->Set(SETTING_LEVEL, (int32)ECurrentLevel::SomeLevel);
 
-	// As we are dealing with a multicast delegate, we can add as many delegats (= handlers) as we want.
+	// As we are dealing with a multicast delegate, we can add as many delegates (= handlers) as we want.
 	// By clearing, we make sure to react only once to this event
 	if(SI->OnCreateSessionCompleteDelegates.IsBound())
 	{
@@ -49,7 +63,11 @@ bool UMyGISubsystem::CreateSession(const FLocalPlayerContext& LPC, FHostSessionC
 
 	SI->OnCreateSessionCompleteDelegates.AddUObject(GetGameInstance(), &UMyGameInstance::HandleCreateSessionComplete);
 
-	 * ... you find the code for the event handler inside MyGameInstance.cpp in the comment at the very bottom.
+	 * ... where `HandleCreateSessionComplete` is your custom function that implements the same functionality as is
+	 * passed inside `Callback`.
+	 * In order to see what `Callback` actually does, e.g. what code gets executed, see the call to `CreateSession` in
+	 * "UMyGameInstance.cpp", lines 15-39
+	 * 
 	 */
 	SI->OnCreateSessionCompleteDelegates.AddLambda(Callback);
 
@@ -58,20 +76,29 @@ bool UMyGISubsystem::CreateSession(const FLocalPlayerContext& LPC, FHostSessionC
 
 	return SI->CreateSession(*LPC.GetLocalPlayer()->GetPreferredUniqueNetId(), NAME_GameSession, *LastSessionSettings);
 
-	 * However, the unique net id might be null at this point. By passing the local player index, a unique net id
-	 * will be created for us without problem.
+	 * However, this signature passes along a unique net id, which might be `null` at this point.
+	 * By passing the local player index, a unique net id will be created for us without problem.
 	 * Note that often, instead of `GetLocalPlayer()->GetIndexInGameInstance()` just `0` is provided.
 	 * The 0 means that the session is always created in the name of the local player with index 0.
 	 * This is always safe, as split/shared screen isn't usually possible at the same time as LAN/online multiplayer.
 	 * As long as there is only one local player (not split/shared screen), its index is 0.
+	 * 
+	 * Also, the parameter `FName SessionName`, set to `NAME_GameSession`, can be any `FName`,
+	 * e.g. `FName(TEXT("my custom session")`. However, don't mistake the `SessionName` parameter for some sort of
+	 * session description. Unreals FNames are	case-insensitive identifiers that aren't meant to hold
+	 * user content (or any dynamic content for that matter).
+	 * `NAME_GameSession` is sort of a default value for the kind of session we are creating (i.e. opposed to
+	 * `NAME_PartySession` which is meant to be used for lobby sessions before starting the game).
+	 * In the end, you can put any FName there. Just make sure to be consistent in always putting the same.
+	 * 
 	 */
 	return SI->CreateSession(LPC.GetLocalPlayer()->GetIndexInGameInstance(), NAME_GameSession, *LastSessionSettings);
 }
 
-bool UMyGISubsystem::JoinSession(const FLocalPlayerContext& LPC, TFunction<void(FName, EOnJoinSessionCompleteResult::Type)> Callback)
+bool UMyGISubsystem::JoinSession(const FLocalPlayerContext& LPC, TFunction<void(ECurrentLevel, EOnJoinSessionCompleteResult::Type)> Callback)
 {
 	const IOnlineSessionPtr SI = GetSessionInterface();
-	LastSessionSearch = MakeShareable(new FOnlineSessionSearch());
+	const TSharedRef<FOnlineSessionSearch> LastSessionSearch = MakeShared<FOnlineSessionSearch>();
 	LastSessionSearch->MaxSearchResults = 10000;
 	LastSessionSearch->bIsLanQuery = Cast<UMyGameInstance>(GetGameInstance())->SessionConfig.bEnableLAN;
 	LastSessionSearch->QuerySettings.Set(SEARCH_PRESENCE, true, EOnlineComparisonOp::Equals);
@@ -81,7 +108,7 @@ bool UMyGISubsystem::JoinSession(const FLocalPlayerContext& LPC, TFunction<void(
 		UE_LOG(LogNet, Warning, TEXT("%s: OnFindSessionsCompleteDelegates: was bound, clearing"), *GetFullName())
 		SI->OnFindSessionsCompleteDelegates.Clear();
 	}
-	SI->OnFindSessionsCompleteDelegates.AddLambda([this, LPC, Callback, SI] (bool bSuccess)
+	SI->OnFindSessionsCompleteDelegates.AddLambda([this, LastSessionSearch, LPC, Callback, SI] (bool bSuccess)
 	{
 		// In case we find a session, we just join immediately;
 		// more thoroughly, you make a list of available sessions with their respective custom name and offer the player
@@ -96,9 +123,17 @@ bool UMyGISubsystem::JoinSession(const FLocalPlayerContext& LPC, TFunction<void(
 			}
 			// We are inside a closure that gets executed when "FindSessionsComplete" fires, thus this line means:
 			// When we found a session ...
+			// ... we lookup the new level in the session settings ...
 			// ... and when we joined a session ...
-			// ... execute `Callback(Fname, EJoinSessionCompleteResult::Type)`
-			SI->OnJoinSessionCompleteDelegates.AddLambda(Callback);
+			// ... execute `Callback(NewLevel, EJoinSessionCompleteResult::Type)`
+			int32 NewLevelI;
+			// the session settings can't store our enum `CurrentLevel`, we stored an `int32` instead
+			Results[0].Session.SessionSettings.Get(SETTING_LEVEL, NewLevelI);
+			SI->OnJoinSessionCompleteDelegates.AddLambda([Callback, NewLevelI] (FName, EOnJoinSessionCompleteResult::Type Type)
+			{
+				// to convert `int32` to the enum, `static_cast` is just fine
+				Callback(static_cast<ECurrentLevel>(NewLevelI), Type);
+			});
 			SI->JoinSession(LPC.GetLocalPlayer()->GetIndexInGameInstance(), NAME_GameSession, Results[0]);
 		}
 		else
@@ -110,7 +145,7 @@ bool UMyGISubsystem::JoinSession(const FLocalPlayerContext& LPC, TFunction<void(
 	// after having registered the callback (`AddLambda`) for the FindSessionCompleteEvent, we go and find sessions
 	return SI->FindSessions
 		(LPC.GetLocalPlayer()->GetIndexInGameInstance()
-		, LastSessionSearch.ToSharedRef()
+		, LastSessionSearch
 		);
 }
 
