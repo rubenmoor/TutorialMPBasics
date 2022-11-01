@@ -36,6 +36,7 @@ TODO: Steam (should be relatively straightforward)
 * What is the unique net id? Do I have to bother? Should I store it?
 * How to have more than one local player and should I bother?
 * What is `ULocalPlayer` good for and how does it relate to `GameInstance` and the usual suspects `PlayerState` and `PlayerController`?
+* How to elegantly use closures for callbacks of asynchronous functions?
 
 And this [Local Player Context](https://docs.unrealengine.com/4.27/en-US/API/Runtime/Engine/Engine/FLocalPlayerContext/) looks useful.
 Let's actually go ahead and use it.
@@ -303,6 +304,37 @@ In this document, I present the code in fractions.
 
 ### Chosing the online subsytem: LAN, EOS, Steam, or whatnot.
 
+The code that follows requires changes to your project dependencies.
+My editor (Jetbrains Rider) suggested those edits on the fly, which consisted of adding "OnlineSubystemUtils" and "OnlineSubsytem" to the private dependencies as follows.
+
+File: [TutorialMPBasics.Build.cs](/Source/TutorialMPBasics/TutorialMPBasics.Build.cs)
+
+```
+// Copyright Epic Games, Inc. All Rights Reserved.
+
+using UnrealBuildTool;
+
+public class TutorialMPBasics : ModuleRules
+{
+	public TutorialMPBasics(ReadOnlyTargetRules Target) : base(Target)
+	{
+		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
+	
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore" });
+
+		PrivateDependencyModuleNames.AddRange(new string[] { "OnlineSubsystemUtils", "OnlineSubsystem" });
+
+		// Uncomment if you are using Slate UI
+		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
+		
+		// Uncomment if you are using online features
+		// PrivateDependencyModuleNames.Add("OnlineSubsystem");
+
+		// To include OnlineSubsystemSteam, add it to the plugins section in your uproject file with the Enabled attribute set to true
+	}
+}
+```
+
 The online subsystem shouldn't be confused with the above Game Instance Subsystem. 
 I don't know why they are both called subsystem, they don't have anything in common.
 "Online Subystem" always refers to Steam or EOS (the Epic Online Services) and alike.
@@ -343,7 +375,24 @@ Until then, only LAN actually works.
 
 ### Creating a session
 
-Just follow the comments inside the code to get what's going on.
+In the following code, we will  make use of the delegate system.
+Some say it's a very elegant way of structuring code.
+Personally, I think delegates can get messy quite easily and there are few situations where it's a good idea to declare your own custom delegates.
+There are two scenarios in which delegates are supremely helpful, though:
+
+* Asynchronous code execution, well-known from Javascript (we will see an example right away)
+* Implementing event handlers for user actions, e.g. UI interactions and button presses
+
+Asynchronous code execution means:
+There are functions like `IOnlineSession::CreateSession` that spawn a new thread in the background.
+The line of code that follows gets executed immediately after the call to create session,
+because we don't want our entire game to wait while some networking protocol is doing network-related stuff.
+But this means, after the call to `IOnlineSession::CreateSession`, the session still won't be created.
+
+To continue with a readily created session, we first register a callback, i.e. code to be executed once `CreateSession` is done.
+This callback takes the form of a delegate.
+
+Follow the comments inside the code to get what's going on.
 
 File [Modes/MyGISubsystem.cpp](/Source/TutorialMPBasics/Private/Modes/MyGISubsystem.cpp)
 
@@ -439,7 +488,8 @@ bool UMyGISubsystem::CreateSession(const FLocalPlayerContext& LPC, FHostSessionC
 
 Given that `UMyGISubsystem::CreateSession` has the `TFunction` object "Callback" as parameter,
 and given that `Callback` gets registered as delegate handler via `OnCreateSessionCompleteDelegates.AddLambda(Callback)`,
-we get to decide what happens at the event "OnCreateSessionComplete" right where we call `UMyGISubsystem::CreateSession`.
+we get to decide what happens at the event "OnCreateSessionComplete" right where we call `UMyGISubsystem::CreateSession` by means of a closure, 
+cf. [some background on closure in C++](https://www.cprogramming.com/c++11/c++11-lambda-closures.html).
 
 For that, we define `UMyGameInstance::HostGame`, like this:
 
@@ -461,7 +511,7 @@ void UMyGameInstance::HostGame(const FLocalPlayerContext& LPC)
 		// * we can pass the local player context `LPC` into the closure, thus we know which local player created the
 		//   session and thus has to update their current level; keeping track of this would otherwise require an extra
 		//   variable in the game instance
-		, [this, LPC] (FName SessionName, bool bSuccess)
+		, [this, LPC] (FName SessionName, bool bSuccess) // <- this is C++ closure syntax
 		{
 			if(bSuccess)
 			{
@@ -641,14 +691,63 @@ Cf. the file [launch.bat](/launch.bat) in this project.
 
 There is a function `IOnlineSession::DestroySession` that you can work with just like with `IOnlineSession::CreateSession` and `IOnlineSession::FindSession`:
 It requires a `SessionName` (remember: it's usually just `NAME_GameSession`) and fires an event upon completion.
-You can call `DestroySession` to exit from a running game into the main menu.
-In case you exit to desktop, just run `UKismetSystemLibrary::QuitGame`.
+If you want to leave a game, make sure to destroy the session.
+Otherwise your user will encounter an error when they try to create or join a session again.
+The same applies in case you exit to desktop with `UKismetSystemLibrary::QuitGame`.
 
-Note, however, that Unreal already ships a function `AGameInstance::ReturnToMainMenu()`.
-You actually might get away never calling `DestroySession`.
+File: [Modes/MyGISubsystem](/Source/TutorialMPBasics/Private/Modes/MyGISubsystem.cpp)
 
-Similarly there exists `IOnlineSession::StartSession`.
-Once I know what it's good for (including potential other functions), I will update here.
+```cpp
+void UMyGISubsystem::LeaveSession()
+{
+	const IOnlineSessionPtr SI = GetSessionInterface();
+	if(SI->GetNamedSession(NAME_GameSession))
+	{
+		FOnDestroySessionCompleteDelegate OnDestroySessionComplete;
+		OnDestroySessionComplete.BindLambda([this] (FName, bool bSuccess)
+		{
+			// `DestroySession` does seem to have some glitches, where the session ends up not being destroyed.
+			// Unfortunately, I regularly encounter the case where `bSuccess` is true, but the session isn't destroyed.
+			// As a workaround, you need to make sure to try and destroy any session "NAME_GameSession"
+			// before you join or create one. Otherwise creating or joining fails with error and the only option is
+			// a game restart.
+			if(bSuccess)
+			{
+				GetGameInstance()->ReturnToMainMenu();
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("%s: Failed to destroy session"), *GetFullName())
+			}
+		});
+		SI->DestroySession(NAME_GameSession, OnDestroySessionComplete);
+	}
+}
+
+```
+
+In order to call `LeaveSession` we will implement a neat little sample for a [Multicast RPC](https://docs.unrealengine.com/4.26/en-US/InteractiveExperiences/Networking/Actors/RPCs/):
+
+File [Modes/MyGameInstance.h](/Source/TutorialMPBasics/Public/Modes/MyGameInstance.h)
+
+```cpp
+        // the `NetMulticast` turns this function into a multicast RPC
+	// cf. https://docs.unrealengine.com/5.0/en-US/rpcs-in-unreal-engine/
+	// Conveniently, called from the server, it will get executed right there plus on all connected clients.
+	// And when called on some client, it will get executed locally.
+	UFUNCTION(NetMulticast, Reliable)
+	void LeaveGame();
+```
+
+The implementation of this method follows the rules of RPCs, i.e. you have to add `_Implementation` to the name:
+
+File [Modes/MyGameInstance.cpp](/Source/TutorialMPBasics/Private/Modes/MyGameInstance.cpp)
+```cpp
+void UMyGameInstance::LeaveGame_Implementation()
+{
+	GetSubsystem<UMyGISubsystem>()->LeaveSession();
+}
+```
 
 # Part 3: Using EOS and Steam, instead of LAN
 
