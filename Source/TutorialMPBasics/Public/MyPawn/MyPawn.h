@@ -20,9 +20,17 @@ protected:
 	// If you put "EditAnywhere" instead, you could change the type of Body (e.g. from UStaticMeshComponent to
 	// USplineComponent), which isn't what you usually want
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite)
+	TObjectPtr<class USphereComponent> Root;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite)
 	TObjectPtr<UStaticMeshComponent> Body;
 	
-public:	
+public:
+	// `Velocity` is a replicated property. This means: a change of a pawn's velocity propagates from the host to
+	// the clients. It doesn't matter who controls the pawn. For the information flow in the other direction, see
+	// "Modes/PlayerController.cpp".
+	// Note that movement replication is turned off. With the velocity replicated, the pawn has all the information
+	// required to correctly move in-sync.
 	UPROPERTY(Replicated, VisibleAnywhere, BlueprintReadOnly)
 	FVector Velocity = FVector::Zero();
 

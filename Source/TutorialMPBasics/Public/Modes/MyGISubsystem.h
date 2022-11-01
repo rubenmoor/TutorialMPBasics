@@ -22,7 +22,9 @@ class TUTORIALMPBASICS_API UMyGISubsystem : public UGameInstanceSubsystem
 
 public:
 	bool CreateSession(const FLocalPlayerContext& LPC, struct FHostSessionConfig SessionConfig, TFunction<void(FName, bool)> Callback);
-	bool JoinSession(const FLocalPlayerContext& LPC, TFunction<void(ECurrentLevel, EOnJoinSessionCompleteResult::Type)> Callback);
+	void JoinSession(const FLocalPlayerContext& LPC, TFunction<void(ECurrentLevel, EOnJoinSessionCompleteResult::Type)> Callback);
+
+	void LeaveSession();
 	
 	// show the login browser window for EOS
 	void ShowLoginScreen(const FLocalPlayerContext& LPC);

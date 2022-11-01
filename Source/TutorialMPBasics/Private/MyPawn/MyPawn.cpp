@@ -3,6 +3,7 @@
 
 #include "MyPawn/MyPawn.h"
 
+#include "Components/SphereComponent.h"
 #include "Net/UnrealNetwork.h"
 
 // Sets default values
@@ -11,8 +12,12 @@ AMyPawn::AMyPawn()
  	// Set this pawn to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 
+	Root = CreateDefaultSubobject<USphereComponent>(FName(TEXT("SphereCollision")));
+	SetRootComponent(Root);
+	Root->SetSphereRadius(50);
+	
 	Body = CreateDefaultSubobject<UStaticMeshComponent>(FName(TEXT("Body")));
-	SetRootComponent(Body);
+	Body->SetupAttachment(Root);
 
     AActor::SetReplicateMovement(false);
 }
@@ -27,11 +32,11 @@ void AMyPawn::AccelerateRight()
 	Velocity += FVector(0, 10, 0);
 }
 
-// Called every frame
 void AMyPawn::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	// move the pawn according to its velocity
 	SetActorLocation(GetActorLocation() + Velocity * DeltaTime);
 }
 

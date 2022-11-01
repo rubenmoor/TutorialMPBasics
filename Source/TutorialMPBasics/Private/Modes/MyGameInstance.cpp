@@ -3,6 +3,7 @@
 
 #include "Modes/MyGameInstance.h"
 
+#include "OnlineSubsystemUtils.h"
 #include "Modes/MyGISubsystem.h"
 #include "Modes/MyLocalPlayer.h"
 
@@ -75,6 +76,11 @@ void UMyGameInstance::JoinGame(const FLocalPlayerContext& LPC)
 		default: ;
 		}
 	});
+}
+
+void UMyGameInstance::LeaveGame_Implementation()
+{
+	GetSubsystem<UMyGISubsystem>()->LeaveSession();
 }
 
 int32 UMyGameInstance::AddLocalPlayer(ULocalPlayer* NewPlayer, int32 ControllerId)

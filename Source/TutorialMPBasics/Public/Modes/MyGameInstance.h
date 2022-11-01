@@ -61,6 +61,13 @@ public:
 	// well for this example
 	void JoinGame(const FLocalPlayerContext& LPC);
 
+	// the `NetMulticast` turns this function into a multicast RPC
+	// cf. https://docs.unrealengine.com/5.0/en-US/rpcs-in-unreal-engine/
+	// Conveniently, called from the server, it will get executed right there plus on all connected clients.
+	// And when called on some client, it will get executed locally.
+	UFUNCTION(NetMulticast, Reliable)
+	void LeaveGame();
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	FHostSessionConfig SessionConfig =
 		{ ""
@@ -72,7 +79,6 @@ public:
 	
 protected:
 	// event handlers
-	void HandleSessionCreated(FName SessionName, bool bSuccess);
 
 	// Using Local Player for player-specific application state requires some initialization we will do here
 	virtual int32 AddLocalPlayer(ULocalPlayer* NewPlayer, int32 ControllerId) override;

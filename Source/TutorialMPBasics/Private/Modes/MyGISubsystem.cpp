@@ -95,7 +95,7 @@ bool UMyGISubsystem::CreateSession(const FLocalPlayerContext& LPC, FHostSessionC
 	return SI->CreateSession(LPC.GetLocalPlayer()->GetIndexInGameInstance(), NAME_GameSession, *LastSessionSettings);
 }
 
-bool UMyGISubsystem::JoinSession(const FLocalPlayerContext& LPC, TFunction<void(ECurrentLevel, EOnJoinSessionCompleteResult::Type)> Callback)
+void UMyGISubsystem::JoinSession(const FLocalPlayerContext& LPC, TFunction<void(ECurrentLevel, EOnJoinSessionCompleteResult::Type)> Callback)
 {
 	const IOnlineSessionPtr SI = GetSessionInterface();
 	const TSharedRef<FOnlineSessionSearch> LastSessionSearch = MakeShared<FOnlineSessionSearch>();
@@ -143,10 +143,35 @@ bool UMyGISubsystem::JoinSession(const FLocalPlayerContext& LPC, TFunction<void(
 	});
 
 	// after having registered the callback (`AddLambda`) for the FindSessionCompleteEvent, we go and find sessions
-	return SI->FindSessions
+	SI->FindSessions
 		(LPC.GetLocalPlayer()->GetIndexInGameInstance()
 		, LastSessionSearch
 		);
+}
+
+void UMyGISubsystem::LeaveSession()
+{
+	const IOnlineSessionPtr SI = GetSessionInterface();
+	if(SI->GetNamedSession(NAME_GameSession))
+	{
+		FOnDestroySessionCompleteDelegate OnDestroySessionComplete;
+		OnDestroySessionComplete.BindLambda([this, SI, OnDestroySessionComplete] (FName, bool bSuccess)
+		{
+			// `DestroySession` does seem to have some glitches, where the session ends up not being destroyed.
+			// Unfortunately, I regularly encounter the case where `bSuccess` is true, but the session isn't destroyed.
+			if(SI->GetNamedSession(NAME_GameSession))
+			{
+				UE_LOG(LogTemp, Warning, TEXT("%s: Failed to destroy session, trying again ..."), *GetFullName())
+				SI->DestroySession(NAME_GameSession, OnDestroySessionComplete);
+			}
+			else
+			{
+				UE_LOG(LogTemp, Warning, TEXT("%s: Session destroyed."), *GetFullName())
+				GetGameInstance()->ReturnToMainMenu();
+			}
+		});
+		SI->DestroySession(NAME_GameSession, OnDestroySessionComplete);
+	}
 }
 
 void UMyGISubsystem::ShowLoginScreen(const FLocalPlayerContext& LPC)
@@ -177,19 +202,32 @@ void UMyGISubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 
+	// When EOS not configured, warn right away.
+
+	/*
+	 * `GetIdentityInterfaceChecked(FName(TEXT("EOS"))` causes a crash when EOS isn't configured
+	 */
 	const IOnlineIdentityPtr OSSIdentity = Online::GetIdentityInterface(GetWorld(), FName(TEXT("EOS")));
 	if(!OSSIdentity.IsValid())
 	{
 		UE_LOG
 			( LogNet
-			, Error
+			, Warning
 			, TEXT("%s: couldn't get identity interface for EOS. Probably not configured.")
 			, *GetFullName()
 			)
 		return;
 	}
-	//const IOnlineIdentityPtr OSSIdentity = Online::GetIdentityInterfaceChecked(FName(TEXT("EOS")));
 	
+	// handle network failure
+	// this isn't working for some reason, cf. https://forums.unrealengine.com/t/delegate-for-handlenetworkfailure-doesnt-fire/681949/4
+	// The delegate never fires, even if I get "Network Failure" in my log.
+	GEngine->OnNetworkFailure().AddLambda([this] (UWorld*, UNetDriver*, ENetworkFailure::Type, const FString& StrError)
+	{
+		UE_LOG(LogNet, Error, TEXT("%s: NetworkFailure: %s"), *GetFullName(), *StrError)
+		LeaveSession();
+	});
+
 	// login handler
 	
 	if(OSSIdentity->OnLoginCompleteDelegates->IsBound())
