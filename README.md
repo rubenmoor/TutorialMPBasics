@@ -37,6 +37,7 @@ TODO: Steam (should be relatively straightforward)
 * How to have more than one local player and should I bother?
 * What is `ULocalPlayer` good for and how does it relate to `GameInstance` and the usual suspects `PlayerState` and `PlayerController`?
 * How to elegantly use closures for callbacks of asynchronous functions?
+* TODO: When and how to use the replication feature *exactly*?
 
 And this [Local Player Context](https://docs.unrealengine.com/4.27/en-US/API/Runtime/Engine/Engine/FLocalPlayerContext/) looks useful.
 Let's actually go ahead and use it.
@@ -44,14 +45,14 @@ Let's actually go ahead and use it.
 ## Getting started with LAN-only
 
 We skip anything related to Steam and EOS until Part 3 below.
-This implies LAN-based multiplayer, without login and without connetion to any online service for Part 1 and Part 2.
+This implies that we start off with LAN-based multiplayer, without login and without connection to any online service for Part 1 and Part 2.
 If you know that your game won't support LAN, don't worry.
 There is virtually no extrawork in first implementing LAN and then replacing it with some online service.
 I would even encourage to use LAN as the most straightforward way to test new multiplayer functionality.
 
 # Part 1: Using Game Instance to manage application state
 
-The Game Instance is an object of type `UGameInstance`, or of a type that inherit from `UGameInstance`.
+The Game Instance is an object of type `UGameInstance`, or of a type that inherits from `UGameInstance`.
 The recommended workflow is a customization of your Game Instance according these steps:
 
 1. Create a new C++ class from within the editor
