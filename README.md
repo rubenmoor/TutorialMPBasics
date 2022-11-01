@@ -151,7 +151,7 @@ To this end, I find the following `enum` type useful:
 
 File: [Modes/MyLocalPlayer.h](/Source/TutorialMPBasics/Public/Modes/MyLocalPlayer.h)
 
-```
+```cpp
 // MyLocalPlayer.h
 
 UENUM(BlueprintType)
@@ -173,7 +173,7 @@ class  MYGAME_API UMyLocalPlayer : public ULocalPlayer
 
 along with the helper method
 
-```
+```cpp
 UFUNCTION(BlueprintCallable)
 bool GetIsInMainMenu()
 {
@@ -204,7 +204,7 @@ Thus, I feel comfortable to implement the session configuration in `MyGameInstan
 
 File: [Modes/MyGameInstance.h](/Source/TutorialMPBasics/Public/Modes/MyGameInstance.h)
 
-```
+```cpp
 // MyGameInstance.h
 
 UENUM(BlueprintType)
@@ -309,7 +309,7 @@ My editor (Jetbrains Rider) suggested those edits on the fly, which consisted of
 
 File: [TutorialMPBasics.Build.cs](/Source/TutorialMPBasics/TutorialMPBasics.Build.cs)
 
-```
+```cpp
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
@@ -340,7 +340,7 @@ I don't know why they are both called subsystem, they don't have anything in com
 "Online Subystem" always refers to Steam or EOS (the Epic Online Services) and alike.
 You can set a default for the online subsystem by adding the following line to [Config/DefaultEngine.ini](/Config/DefaultEngine.ini)
 
-```
+```ini
 [OnlineSubsystem]
 DefaultPlatformService=<Default Platform Identifier>
 ```
@@ -355,7 +355,7 @@ In our case, we define the following function inside the Game Instance Subsystem
 
 File [Modes/MyGISubsystem.cpp](/Source/TutorialMPBasics/Private/Modes/MyGISubsystem.cpp)
 
-```
+```cpp
 IOnlineSessionPtr UMyGISubsystem::GetSessionInterface() const
 {
 	return Online::GetSessionInterfaceChecked
@@ -396,7 +396,7 @@ Follow the comments inside the code to get what's going on.
 
 File [Modes/MyGISubsystem.cpp](/Source/TutorialMPBasics/Private/Modes/MyGISubsystem.cpp)
 
-```
+```cpp
 bool UMyGISubsystem::CreateSession(const FLocalPlayerContext& LPC, FHostSessionConfig SessionConfig,
                                    TFunction<void(FName, bool)> Callback)
 {
@@ -483,7 +483,6 @@ bool UMyGISubsystem::CreateSession(const FLocalPlayerContext& LPC, FHostSessionC
 	 */
 	return SI->CreateSession(LPC.GetLocalPlayer()->GetIndexInGameInstance(), NAME_GameSession, *LastSessionSettings);
 }
-
 ```
 
 Given that `UMyGISubsystem::CreateSession` has the `TFunction` object "Callback" as parameter,
@@ -495,7 +494,7 @@ For that, we define `UMyGameInstance::HostGame`, like this:
 
 File: [Modes/UMyGameInstance.cpp](Source/TutorialMPBasics/Private/Modes/MyGameInstance.cpp)
 
-```
+```cpp
 void UMyGameInstance::HostGame(const FLocalPlayerContext& LPC)
 {
 	UMyGISubsystem* GISub = GetSubsystem<UMyGISubsystem>();
@@ -559,7 +558,7 @@ This way the Game Instance is always aware of the actual local player (and its c
 The developers of Unreal Engine leave us with a somewhat stupid choice, regarding the use of the local player context.
 I would like to define `HostGame` like this:
 
-```
+```cpp
 // this doesn't compile
 UFUNCTION(BlueprintCallable)
 void HostGame(const FLocalPlayerContext& LPC);
@@ -579,7 +578,7 @@ From within the UI, you will need `ULocalPlayer::GetIndexInGameInstace() -> int3
 
 File: [Modes/UMyGameInstance.cpp](Source/TutorialMPBasics/Private/Modes/MyGameInstance.cpp)
 
-```
+```cpp
 bool UMyGISubsystem::JoinSession(const FLocalPlayerContext& LPC, TFunction<void(ECurrentLevel, EOnJoinSessionCompleteResult::Type)> Callback)
 {
 	const IOnlineSessionPtr SI = GetSessionInterface();
@@ -637,7 +636,7 @@ bool UMyGISubsystem::JoinSession(const FLocalPlayerContext& LPC, TFunction<void(
 
 Like above, with `HostGame`, there is the corresponding `JoinGame` method in the Game Instance:
 
-```
+```cpp
 void UMyGameInstance::JoinGame(const FLocalPlayerContext& LPC)
 {
 	Cast<UMyLocalPlayer>(LPC.GetLocalPlayer())->IsMultiplayer = true;
@@ -681,7 +680,7 @@ void UMyGameInstance::JoinGame(const FLocalPlayerContext& LPC)
 The logging is a cheap replacement for an actual error message to the user, using the UI.
 Note that you get this log output by either running the game in the editor (PIE), OR by calling something like this, e.g. from within a .bat file:
 
-```
+```bat
 "F:\ue\UE_5.0\Engine\Binaries\Win64\UnrealEditor.exe" "F:\ue\projects\TutorialMPBasics\TutorialMPBasics.uproject" -log
 ```
 
@@ -742,6 +741,7 @@ File [Modes/MyGameInstance.h](/Source/TutorialMPBasics/Public/Modes/MyGameInstan
 The implementation of this method follows the rules of RPCs, i.e. you have to add `_Implementation` to the name:
 
 File [Modes/MyGameInstance.cpp](/Source/TutorialMPBasics/Private/Modes/MyGameInstance.cpp)
+
 ```cpp
 void UMyGameInstance::LeaveGame_Implementation()
 {
