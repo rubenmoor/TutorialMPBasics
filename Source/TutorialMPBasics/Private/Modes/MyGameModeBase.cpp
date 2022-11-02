@@ -21,7 +21,7 @@ void AMyGameModeBase::PostLogin(APlayerController* NewPlayer)
 		// Unfortunately, `KickPlayer` causes a network failure with the client and I don't know how to
 		// respond to that properly. Therefore, we tell the client to quit themselves
 		//GameSession->KickPlayer(NewPlayer, LOCTEXT("CouldntSpawn", "Could not spawn pawn"));
-		Cast<AMyPlayerController>(NewPlayer)->ClientRPC_LeaveGame();
+		Cast<AMyPlayerController>(NewPlayer)->ClientRPC_LeaveSession();
 	}
 }
 

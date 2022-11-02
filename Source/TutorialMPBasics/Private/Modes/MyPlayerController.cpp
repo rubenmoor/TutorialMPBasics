@@ -4,13 +4,14 @@
 #include "Modes/MyPlayerController.h"
 
 #include "Modes/MyGameInstance.h"
+#include "Modes/MyGISubsystem.h"
 #include "MyPawn/MyPawn.h"
 
 void AMyPlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
 
-	InputComponent->BindAction("ActionEscape", IE_Pressed, GetGameInstance<UMyGameInstance>(), &UMyGameInstance::LeaveGame);
+	InputComponent->BindAction("ActionEscape", IE_Pressed, GetGameInstance<UMyGameInstance>(), &UMyGameInstance::MulticastRPC_LeaveSession);
 
 	// `BindActionRPC` is a custom private function, see below.
 	// Usually you would see here: calls to `InputComponent->BindAction`.
@@ -21,9 +22,9 @@ void AMyPlayerController::SetupInputComponent()
 	BindActionWithRPC("ActionRight", IE_Pressed, EAction::Right);
 }
 
-void AMyPlayerController::ClientRPC_LeaveGame_Implementation()
+void AMyPlayerController::ClientRPC_LeaveSession_Implementation()
 {
-	GetGameInstance<UMyGameInstance>()->LeaveGame();
+	GetGameInstance()->GetSubsystem<UMyGISubsystem>()->LeaveSession();
 }
 
 void AMyPlayerController::HandleAction(EAction Action) const

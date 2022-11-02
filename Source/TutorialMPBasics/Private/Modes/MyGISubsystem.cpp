@@ -154,15 +154,19 @@ void UMyGISubsystem::LeaveSession()
 	const IOnlineSessionPtr SI = GetSessionInterface();
 	if(SI->GetNamedSession(NAME_GameSession))
 	{
-		FOnDestroySessionCompleteDelegate OnDestroySessionComplete;
-		OnDestroySessionComplete.BindLambda([this, SI, OnDestroySessionComplete] (FName, bool bSuccess)
+		if(SI->OnDestroySessionCompleteDelegates.IsBound())
+		{
+			UE_LOG(LogNet, Warning, TEXT("%s: OnDestroySessionCompleteDelegates: was bound, clearing"), *GetFullName())
+			SI->OnDestroySessionCompleteDelegates.Clear();
+		}
+		SI->OnDestroySessionCompleteDelegates.AddLambda([this, SI] (FName, bool bSuccess)
 		{
 			// `DestroySession` does seem to have some glitches, where the session ends up not being destroyed.
 			// Unfortunately, I regularly encounter the case where `bSuccess` is true, but the session isn't destroyed.
 			if(SI->GetNamedSession(NAME_GameSession))
 			{
 				UE_LOG(LogTemp, Warning, TEXT("%s: Failed to destroy session, trying again ..."), *GetFullName())
-				SI->DestroySession(NAME_GameSession, OnDestroySessionComplete);
+				SI->DestroySession(NAME_GameSession);
 			}
 			else
 			{
@@ -170,7 +174,7 @@ void UMyGISubsystem::LeaveSession()
 				GetGameInstance()->ReturnToMainMenu();
 			}
 		});
-		SI->DestroySession(NAME_GameSession, OnDestroySessionComplete);
+		SI->DestroySession(NAME_GameSession);
 	}
 }
 

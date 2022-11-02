@@ -78,7 +78,7 @@ void UMyGameInstance::JoinGame(const FLocalPlayerContext& LPC)
 	});
 }
 
-void UMyGameInstance::LeaveGame_Implementation()
+void UMyGameInstance::MulticastRPC_LeaveSession_Implementation()
 {
 	GetSubsystem<UMyGISubsystem>()->LeaveSession();
 }

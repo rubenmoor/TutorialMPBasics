@@ -28,7 +28,7 @@ class TUTORIALMPBASICS_API AMyPlayerController : public APlayerController
 	
 public:
 	UFUNCTION(Client, Reliable)
-	void ClientRPC_LeaveGame();
+	void ClientRPC_LeaveSession();
 protected:
 	// locally carry out an `EAction`
 	void HandleAction(EAction Action) const;

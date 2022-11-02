@@ -7,7 +7,6 @@
 #include "MyGameInstance.generated.h"
 
 /*
- * 
  * examples for different rule sets
  * You might expect this definition inside some GameMode class, however, we need it already to configure
  * a game (be it single or multiplayer) in the main menu
@@ -66,7 +65,7 @@ public:
 	// Conveniently, called from the server, it will get executed right there plus on all connected clients.
 	// And when called on some client, it will get executed locally.
 	UFUNCTION(NetMulticast, Reliable)
-	void LeaveGame();
+	void MulticastRPC_LeaveSession();
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	FHostSessionConfig SessionConfig =
