@@ -303,7 +303,7 @@ You can always find the complete code in the corresponding source files.
 I.e. [Modes/MyGISubsystem.h](/Source/TutorialMPBasics/Public/Modes/MyGISubsystem.h) and [Modes/MyGISubsystem.cpp](/Source/TutorialMPBasics/Private/Modes/MyGISubsystem.cpp).
 In this document, I present the code in fractions.
 
-### Chosing the online subsytem: LAN, EOS, Steam, or whatnot.
+### Choosing the online subsytem: LAN, EOS, Steam, or whatnot.
 
 The code that follows requires changes to your project dependencies.
 My editor (Jetbrains Rider) suggested those edits on the fly, which consisted of adding "OnlineSubystemUtils" and "OnlineSubsytem" to the private dependencies as follows.
